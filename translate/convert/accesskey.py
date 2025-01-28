@@ -1,37 +1,76 @@
-#
-# Copyright 2002-2009,2011 Zuza Software Foundation
-#
-# This file is part of The Translate Toolkit.
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, see <http://www.gnu.org/licenses/>.
+"""
+Functions for handling access keys in user interface strings.
 
-"""functions used to manipulate access keys in strings."""
+This module provides tools for working with access keys (keyboard shortcuts) in
+UI strings. Access keys are typically denoted by an ampersand (&) before the
+shortcut letter, like "&File" for 'F' as the access key.
+
+Key Features:
+1. Extraction of access keys from strings
+2. Combination of labels and access keys
+3. Smart handling of XML entities
+4. Case-sensitive and case-insensitive matching
+5. Support for different access key markers
+6. Mixing of separately defined labels and access keys
+
+Common scenarios:
+- Menu items: "&File", "&Edit", "&View"
+- Buttons: "&Save", "&Cancel"
+- Dialog labels: "Replace &with:"
+
+Note: Access keys are crucial for keyboard navigation in applications
+and must be preserved during translation while remaining meaningful
+in the target language.
+"""
 
 from translate.storage.placeables.general import XMLEntityPlaceable
 
+# Default marker for access keys in UI strings
 DEFAULT_ACCESSKEY_MARKER = "&"
 
 
 class UnitMixer:
-    """Helper to mix separately defined labels and accesskeys into one unit."""
+    """
+    Combines separately stored labels and access keys into single units.
+    
+    In some UI formats, labels and their access keys are stored separately.
+    This class helps combine them into single strings with embedded access keys.
+    
+    Example:
+        label: "Save As"
+        accesskey: "A"
+        combined: "Save &As"
+    
+    Args:
+        labelsuffixes: List of suffixes that identify label strings
+        accesskeysuffixes: List of suffixes that identify access key strings
+    """
 
     def __init__(self, labelsuffixes, accesskeysuffixes):
+        """
+        Initialize with lists of suffixes for labels and access keys.
+        
+        Args:
+            labelsuffixes: e.g., ['.label', '.title']
+            accesskeysuffixes: e.g., ['.accesskey', '.accessKey']
+        """
         self.labelsuffixes = labelsuffixes
         self.accesskeysuffixes = accesskeysuffixes
 
     def match_entities(self, index):
-        """Populates mixedentities from the index."""
+        """
+        Find pairs of entities that represent label + access key combinations.
+        
+        Searches through the index for entities that have matching pairs:
+        - One with a label suffix
+        - One with an access key suffix
+        
+        Args:
+            index: Dictionary of entity names to search
+            
+        Returns:
+            Dictionary of matched entities
+        """
         #: Entities which have a .label/.title and .accesskey combined
         mixedentities = {}
         for entity in index:
@@ -52,9 +91,21 @@ class UnitMixer:
     @staticmethod
     def mix_units(label_unit, accesskey_unit, target_unit):
         """
-        Mix the given units into the given target_unit if possible.
-
-        Might return None if no match is possible.
+        Combine label and access key translation units into one.
+        
+        Merges:
+        - Source text and access key
+        - Location information
+        - Comments and notes
+        - Message context
+        
+        Args:
+            label_unit: Unit containing the label text
+            accesskey_unit: Unit containing the access key
+            target_unit: Unit to store the combined result
+            
+        Returns:
+            Combined unit or None if combination failed
         """
         target_unit.addlocations(label_unit.getlocations())
         target_unit.addlocations(accesskey_unit.getlocations())
@@ -79,6 +130,22 @@ class UnitMixer:
         return target_unit
 
     def find_mixed_pair(self, mixedentities, store, unit):
+        """
+        Find the matching label/accesskey pair for a given unit.
+        
+        Search process:
+        1. Check if unit is part of a mixed entity
+        2. Find the corresponding label or access key
+        3. Verify both parts exist in the store
+        
+        Args:
+            mixedentities: Dict of known mixed entities
+            store: Store containing all units
+            unit: Unit to find pair for
+            
+        Returns:
+            Tuple (label_entity, accesskey_entity) or (None, None)
+        """
         entity = unit.getid()
         if entity not in mixedentities:
             return None, None
@@ -115,15 +182,24 @@ class UnitMixer:
 
 def extract(string, accesskey_marker=DEFAULT_ACCESSKEY_MARKER):
     """
-    Extract the label and accesskey from a label+accesskey string.
-
-    The function will also try to ignore &entities; which would obviously not
-    contain accesskeys.
-
-    :type string: Unicode
-    :param string: A string that might contain a label with accesskey marker
-    :type accesskey_marker: Char
-    :param accesskey_marker: The character that is used to prefix an access key
+    Split a combined string into label and access key.
+    
+    Process:
+    1. Find the access key marker
+    2. Extract the following character as access key
+    3. Remove marker and key from label
+    4. Handle special cases:
+       - XML entities (e.g., &amp;)
+       - End of string
+       - Invalid access keys (space)
+    
+    Args:
+        string: Combined string (e.g., "&File")
+        accesskey_marker: Character marking the access key
+        
+    Returns:
+        Tuple (label, accesskey)
+        Example: ("File", "F") from "&File"
     """
     assert isinstance(string, str)
     assert isinstance(accesskey_marker, str)
@@ -153,20 +229,26 @@ def extract(string, accesskey_marker=DEFAULT_ACCESSKEY_MARKER):
 
 def combine(label, accesskey, accesskey_marker=DEFAULT_ACCESSKEY_MARKER):
     """
-    Combine a label and and accesskey to form a label+accesskey string.
-
-    We place an accesskey marker before the accesskey in the label and this
-    creates a string with the two combined e.g. "File" + "F" = "&File"
-
-    The case of the accesskey is preferred unless no match is found, in which
-    case the alternate case is used.
-
-    :type label: unicode
-    :param label: a label
-    :type accesskey: unicode char
-    :param accesskey: The accesskey
-    :rtype: unicode or None
-    :return: label+accesskey string or None if uncombineable
+    Create a combined string from separate label and access key.
+    
+    Process:
+    1. Find the access key character in the label
+    2. Try exact case match first
+    3. Try alternate case if exact not found
+    4. Insert marker before the matched character
+    5. Handle special cases:
+       - XML entities
+       - Missing matches
+       - Empty strings
+    
+    Args:
+        label: Text without access key (e.g., "File")
+        accesskey: Single character access key (e.g., "F")
+        accesskey_marker: Character to mark the access key
+        
+    Returns:
+        Combined string or None if combination impossible
+        Example: "&File" from ("File", "F")
     """
     assert isinstance(label, str)
     assert isinstance(accesskey, str)

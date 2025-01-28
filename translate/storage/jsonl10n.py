@@ -297,7 +297,7 @@ class WebExtensionJsonFile(JsonFile):
                 value.get("description", ""),
                 value.get("placeholders", None),
             )
-            unit.setid(item, unitid=self.UnitClass.IdClass.from_key(item))
+            unit.setid(item, unitid=self.UnitClass.IdClass([("key", item)]))
             yield unit
 
 
@@ -670,7 +670,7 @@ class GoTextJsonFile(JsonFile):
         out.write(b"\n")
 
 
-class GoI18NJsonUnit(FlatJsonUnit):
+class GoI18NJsonUnit(BaseJsonUnit):
     ID_FORMAT = "{}"
 
     def getvalue(self):
@@ -734,8 +734,7 @@ class GoI18NJsonFile(JsonFile):
                 value.get("id", ""),
                 value.get("description", ""),
             )
-            item = value.get("id", "")
-            unit.setid(item, unitid=self.UnitClass.IdClass.from_key(item))
+            unit.setid(value.get("id", ""))
             yield unit
 
     def serialize(self, out):
@@ -807,7 +806,7 @@ class GoI18NV2JsonFile(JsonFile):
                     id,
                     value.get("description", ""),
                 )
-            unit.setid(id, unitid=self.UnitClass.IdClass.from_key(id))
+            unit.setid(id)
             yield unit
 
 
@@ -888,11 +887,11 @@ class ARBJsonFile(JsonFile):
                 metadata.get("placeholders", None),
                 metadata=metadata,
             )
-            unit.setid(item, unitid=self.UnitClass.IdClass.from_key(item))
+            unit.setid(item, unitid=self.UnitClass.IdClass([("key", item)]))
             yield unit
 
 
-class FormatJSJsonUnit(FlatJsonUnit):
+class FormatJSJsonUnit(BaseJsonUnit):
     def storevalues(self, output):
         value = {"defaultMessage": self.target}
         if self.notes:
@@ -906,7 +905,7 @@ class FormatJSJsonFile(JsonFile):
 
     See following URLs for doc:
 
-    https://formatjs.github.io/docs/getting-started/message-extraction/
+    https://formatjs.io/docs/getting-started/message-extraction/
     """
 
     UnitClass = FormatJSJsonUnit
@@ -926,5 +925,5 @@ class FormatJSJsonFile(JsonFile):
                 item,
                 value.get("description", ""),
             )
-            unit.setid(item, unitid=self.UnitClass.IdClass.from_key(item))
+            unit.setid(item, unitid=self.UnitClass.IdClass([("key", item)]))
             yield unit

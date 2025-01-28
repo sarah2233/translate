@@ -1,0 +1,5 @@
+msgid "test"
+msgstr "control"
+
+msgid "hello"
+msgstr "bonjour"

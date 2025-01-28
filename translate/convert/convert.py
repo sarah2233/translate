@@ -17,8 +17,30 @@
 # along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 """
-Handles converting of files between formats (used by
-:mod:`translate.convert` tools).
+Handles converting of files between different localization formats.
+
+This module provides the core infrastructure for the Translate Toolkit's
+file format conversion system. It includes:
+
+Key Components:
+1. ConvertOptionParser - Handles command-line options for conversion tools
+2. ArchiveConvertOptionParser - Extends conversion to handle archive files
+3. File processing utilities - For handling input/output operations
+4. Format conversion logic - Supporting various file format transformations
+
+Features:
+- Support for multiple input/output formats
+- Template-based conversions
+- PO/POT file handling
+- Archive file processing
+- Fuzzy translation handling
+- Duplicate string management
+- Multi-file output options
+- Timestamp preservation
+- Conversion thresholds
+
+The conversion framework is used by all the toolkit's format conversion tools
+(e.g., po2xliff, xliff2po, etc.) to provide consistent behavior and options.
 """
 
 import os.path
@@ -31,7 +53,24 @@ optparse = optrecurse.optparse
 
 
 class ConvertOptionParser(optrecurse.RecursiveOptionParser):
-    """A specialized Option Parser for convertor tools..."""
+    """
+    Specialized Option Parser for converter tools.
+    
+    This class extends RecursiveOptionParser to add options specific to
+    format conversion, including:
+    - Template handling
+    - POT file generation
+    - Fuzzy translation control
+    - Duplicate string management
+    - Multi-file output control
+    - Timestamp preservation
+    
+    The parser supports various conversion scenarios:
+    1. Direct conversion between formats
+    2. Template-based conversion
+    3. POT file generation
+    4. Recursive directory processing
+    """
 
     def __init__(
         self,
@@ -54,7 +93,16 @@ class ConvertOptionParser(optrecurse.RecursiveOptionParser):
         self.set_usage()
 
     def add_fuzzy_option(self, default=False):
-        """Adds an option to include / exclude fuzzy translations."""
+        """
+        Adds command line option to control fuzzy translation handling.
+        
+        Args:
+            default: Whether to include fuzzy translations by default
+        
+        Adds two mutually exclusive options:
+        --fuzzy: Include fuzzy translations
+        --nofuzzy: Exclude fuzzy translations
+        """
         fuzzyhelp = "use translations marked fuzzy"
         nofuzzyhelp = "don't use translations marked fuzzy"
         if default:
@@ -81,8 +129,10 @@ class ConvertOptionParser(optrecurse.RecursiveOptionParser):
 
     def add_remove_untranslated_option(self, default=False):
         """
-        Adds an option to remove key value from output if it is
-        untranslated.
+        Adds option to remove untranslated strings from output.
+        
+        This is useful for formats that don't support or need
+        untranslated strings in the output file.
         """
         self.add_option(
             "",
@@ -96,8 +146,10 @@ class ConvertOptionParser(optrecurse.RecursiveOptionParser):
 
     def add_threshold_option(self, default=None):
         """
-        Adds an option to output only stores where translation percentage
-        exceeds the threshold.
+        Adds option to filter output based on translation completion.
+        
+        Only outputs files where the percentage of translated strings
+        exceeds the specified threshold. Useful for quality control.
         """
         self.add_option(
             "",
@@ -111,7 +163,13 @@ class ConvertOptionParser(optrecurse.RecursiveOptionParser):
         self.passthrough.append("outputthreshold")
 
     def add_duplicates_option(self, default="msgctxt"):
-        """Adds an option to say what to do with duplicate strings."""
+        """
+        Adds option to control handling of duplicate source strings.
+        
+        Supported styles:
+        - msgctxt: Use message context to disambiguate
+        - merge: Combine translations of identical sources
+        """
         self.add_option(
             "",
             "--duplicates",
@@ -125,7 +183,14 @@ class ConvertOptionParser(optrecurse.RecursiveOptionParser):
         self.passthrough.append("duplicatestyle")
 
     def add_multifile_option(self, default="single"):
-        """Adds an option to say how to split the po/pot files."""
+        """
+        Adds option to control output file splitting.
+        
+        Styles:
+        - single: One output file
+        - toplevel: Split at top level
+        - onefile: Each input creates one output
+        """
         self.add_option(
             "",
             "--multifile",
@@ -250,7 +315,17 @@ def copytemplate(inputfile, outputfile, templatefile, **kwargs):
 
 
 class Replacer:
-    """An object that knows how to replace strings in files."""
+    """
+    String replacement engine for file content.
+    
+    Used for simple transformations where direct string replacement
+    is sufficient, rather than full parsing/conversion.
+    
+    Features:
+    - Simple search/replace in files
+    - Support for template-based replacement
+    - Binary-safe operations using BytesIO
+    """
 
     def __init__(self, searchstring, replacestring):
         self.searchstring = searchstring
@@ -294,13 +369,17 @@ class Replacer:
 
 class ArchiveConvertOptionParser(ConvertOptionParser):
     """
-    ConvertOptionParser that can handle recursing into single archive files.
-
-    ``archiveformats`` maps extension to class. If the extension doesn't
-    matter, it can be None.
-
-    If the extension is only valid for input/output/template, it can be given
-    as ``(extension, filepurpose)``.
+    Enhanced converter that handles archive files (ZIP, TAR, etc.).
+    
+    Extends ConvertOptionParser to support:
+    1. Archive file detection
+    2. Archive content extraction
+    3. Recursive processing of archive contents
+    4. Proper handling of paths within archives
+    5. Archive-specific options
+    
+    The parser maintains a mapping of file extensions to archive handlers,
+    allowing support for various archive formats.
     """
 
     def __init__(
@@ -368,8 +447,17 @@ class ArchiveConvertOptionParser(ConvertOptionParser):
 
     def recurseinputfiles(self, options):
         """
-        Recurse through archive file / directories and return files to be
-        converted.
+        Process input files/archives recursively.
+        
+        For each input:
+        1. Detect if it's an archive
+        2. Extract contents if needed
+        3. Generate appropriate output paths
+        4. Handle template matching
+        5. Preserve directory structure
+        
+        Returns:
+            List of (input, output, template) path tuples
         """
         if self.isarchive(options.input, "input"):
             options.inputarchive = self.openarchive(options.input, "input")
@@ -483,7 +571,23 @@ class ArchiveConvertOptionParser(ConvertOptionParser):
     def processfile(
         self, fileprocessor, options, fullinputpath, fulloutputpath, fulltemplatepath
     ):
-        """Run an individual conversion."""
+        """
+        Process a single file conversion.
+        
+        Steps:
+        1. Open input/template files
+        2. Create output directory if needed
+        3. Check conversion threshold
+        4. Perform conversion
+        5. Handle errors
+        
+        Args:
+            fileprocessor: Function to perform the conversion
+            options: Command line options
+            fullinputpath: Path to input file
+            fulloutputpath: Path for output file
+            fulltemplatepath: Path to template file (if any)
+        """
         if options.timestamp and _output_is_newer(fullinputpath, fulloutputpath):
             return False
 
@@ -508,8 +612,17 @@ class ArchiveConvertOptionParser(ConvertOptionParser):
 
 def _output_is_newer(input_path, output_path):
     """
-    Check if input_path was not modified since output_path was generated,
-    used to avoid needless regeneration of output.
+    Check if output file is newer than input file.
+    
+    Used to avoid unnecessary reconversion of files that
+    haven't changed since last conversion.
+    
+    Args:
+        input_path: Path to input file
+        output_path: Path to output file
+        
+    Returns:
+        Boolean indicating if output is newer
     """
     if not input_path or not output_path:
         return False
@@ -525,8 +638,18 @@ def _output_is_newer(input_path, output_path):
 
 def should_output_store(store, threshold):
     """
-    Check if the percent of translated source words more than or equal to
-    the given threshold.
+    Check if a translation store meets quality threshold.
+    
+    Calculates the percentage of translated source words and compares
+    against the threshold. This helps ensure partially translated
+    files don't get converted if they're below quality standards.
+    
+    Args:
+        store: The translation store to check
+        threshold: Minimum required translation percentage
+        
+    Returns:
+        Boolean indicating if store meets threshold
     """
     if not threshold:
         return True

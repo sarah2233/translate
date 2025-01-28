@@ -16,27 +16,45 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see <http://www.gnu.org/licenses/>.
 
-"""Factory methods to convert supported input files to supported translatable files."""
+"""
+Factory methods for converting between different localization file formats.
+
+This module provides a flexible and extensible system for converting between
+different file formats used in localization. It implements a factory pattern
+to dynamically handle various file format conversions.
+
+Key Features:
+1. Dynamic converter registration and discovery
+2. Support for template-based conversions
+3. Automatic file format detection
+4. Flexible output format selection
+5. Temporary file handling for conversion process
+
+The conversion system supports:
+- Direct format conversions (e.g., PO → XLIFF)
+- Template-based conversions (e.g., using original files as templates)
+- Multiple output formats for a single input format
+- Custom conversion options
+
+Usage:
+    converter = get_converter('po', 'xliff')
+    converter(input_file, output_file, template_file, **options)
+"""
 
 import os
 
-# from translate.convert import prop2po, po2prop, odf2xliff, xliff2odf
-
-
-__all__ = ("UnknownExtensionError", "UnsupportedConversionError", "converters")
-
-# Turn into property to support lazy loading of things?
+# Global registry of available converters
 converters = {}
-# for module in (prop2po, po2prop, odf2xliff, xliff2odf):
-#    if not hasattr(module, 'formats'):
-#        continue
-#    for extension in module.formats:
-#        if extension not in converters:
-#            converters[extension] = []
-#        converters[extension].append(module.formats[extension])
-
 
 class UnknownExtensionError(Exception):
+    """
+    Raised when unable to determine the file extension/format.
+    
+    This typically happens when:
+    1. File has no extension
+    2. File name is not accessible
+    3. File is not in a recognized format
+    """
     def __init__(self, afile):
         self.file = afile
 
@@ -45,6 +63,19 @@ class UnknownExtensionError(Exception):
 
 
 class UnsupportedConversionError(Exception):
+    """
+    Raised when requested conversion is not supported.
+    
+    This can happen when:
+    1. No converter exists for the input format
+    2. No converter can produce the requested output format
+    3. Template format is not supported for the conversion
+    
+    Args:
+        in_ext: Input file extension/format
+        out_ext: Desired output format
+        templ_ext: Template format (if used)
+    """
     def __init__(self, in_ext=None, out_ext=None, templ_ext=None):
         self.in_ext = in_ext
         self.out_ext = out_ext
@@ -58,6 +89,20 @@ class UnsupportedConversionError(Exception):
 
 
 def get_extension(filename):
+    """
+    Extract the file extension from a filename.
+    
+    Handles various file naming patterns:
+    - Standard extensions (file.ext)
+    - Multiple extensions (file.tar.gz)
+    - No extension (file)
+    
+    Args:
+        filename: Name or path of file
+        
+    Returns:
+        Extension without leading dot, or None if no extension
+    """
     path, fname = os.path.split(filename)
     ext = fname.split(os.extsep)[-1]
     if ext == fname:
@@ -66,6 +111,26 @@ def get_extension(filename):
 
 
 def get_converter(in_ext, out_ext=None, templ_ext=None):
+    """
+    Find an appropriate converter for the given formats.
+    
+    Search process:
+    1. Check for template-specific converter if template used
+    2. Look for direct converter matching input format
+    3. Try generic converter for input format
+    4. Select first available output format if none specified
+    
+    Args:
+        in_ext: Input file format/extension
+        out_ext: Desired output format (optional)
+        templ_ext: Template format (optional)
+        
+    Returns:
+        Converter function that can perform the requested conversion
+        
+    Raises:
+        UnsupportedConversionError: If no suitable converter found
+    """
     convert_candidates = None
     if templ_ext:
         if (in_ext, templ_ext) in converters:
@@ -94,7 +159,19 @@ def get_converter(in_ext, out_ext=None, templ_ext=None):
 
 
 def get_output_extensions(ext):
-    """Compiles a list of possible output extensions for the given input extension."""
+    """
+    Find all possible output formats for a given input format.
+    
+    Searches the converter registry to find all registered converters
+    that can handle the input format, collecting their possible
+    output formats.
+    
+    Args:
+        ext: Input file extension/format
+        
+    Returns:
+        List of possible output extensions/formats
+    """
     out_exts = []
     for key, converter in converters.items():
         in_ext = key
@@ -108,29 +185,36 @@ def get_output_extensions(ext):
 
 def convert(inputfile, template=None, options=None, convert_options=None):
     """
-    Convert the given input file to an appropriate output format, optionally
-    using the given template file and further options.
-
-    If the output extension (format) cannot be inferred the first converter
-    that can handle the input file (and the format/extension it gives as
-    output) is used.
-
-    :type  inputfile: file
-    :param inputfile: The input file to be converted
-    :type  template: file
-    :param template: Template file to use during conversion
-    :type  options: dict (default: None)
-    :param options: Valid options are:
-        - in_ext: The extension (format) of the input file.
-        - out_ext: The extension (format) to use for the output file.
-        - templ_ext: The extension (format) of the template file.
-        - in_fname: File name of the input file; used only to determine
-          the input file extension (format).
-        - templ_fname: File name of the template file; used only to
-          determine the template file extension (format).
-    :returns: a 2-tuple: The new output file (in a temporary directory) and
-              the extension (format) of the output file. The caller is
-              responsible for deleting the (temporary) output file.
+    Convert a file from one format to another.
+    
+    Main conversion workflow:
+    1. Determine input/output/template formats
+    2. Find appropriate converter
+    3. Create temporary output file
+    4. Perform conversion
+    5. Return output file and format
+    
+    Format Detection:
+    1. Check options dictionary
+    2. Look for file extensions
+    3. Use first available output format if not specified
+    
+    Args:
+        inputfile: File to convert
+        template: Optional template file
+        options: Conversion configuration options:
+            - in_ext: Input format
+            - out_ext: Output format
+            - templ_ext: Template format
+            - in_fname: Input filename (for format detection)
+            - templ_fname: Template filename
+        convert_options: Options passed to converter
+        
+    Returns:
+        Tuple (output_file, output_extension)
+        
+    Note:
+        The caller is responsible for cleaning up the temporary output file
     """
     in_ext, out_ext, templ_ext = None, None, None
 

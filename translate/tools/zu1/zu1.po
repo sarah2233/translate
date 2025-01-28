@@ -1,0 +1,5 @@
+msgid "Hello, world!"
+msgstr "Bonjour, monde !"
+
+msgid "This is a test."
+msgstr "Ceci est un controle."

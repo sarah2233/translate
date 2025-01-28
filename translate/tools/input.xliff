@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file original="example.txt" source-language="en" target-language="fr">
+    <body>
+      <trans-unit id="1">
+        <source>Hello world!</source>
+        <target>¡Hola mundo!</target> 
+      </trans-unit>
+      <trans-unit id="2">
+        <source>This is a test.</source>
+        <target></target>
+      </trans-unit>
+      <trans-unit id="3">
+        <source>Hello world!</source> 
+        <target></target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

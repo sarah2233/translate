@@ -17,6 +17,18 @@
 """
 Create a terminology file by reading a set of .po or .pot files to produce a pootle-terminology.pot.
 
+This script extracts terminology from translation files (.po/.pot) to create a terminology
+glossary that can be used in translation tools. It identifies common terms and their
+translations across multiple files.
+
+Key features:
+- Extracts terms from source and target text
+- Handles various text formats (XML, HTML, C-format strings)
+- Supports stopwords to exclude common words
+- Can fold case for better matching
+- Filters terms based on frequency and length
+- Creates a terminology file in .pot format
+
 See: http://docs.translatehouse.org/projects/translate-toolkit/en/latest/commands/poterminology.html
 for examples and usage instructions.
 """
@@ -38,6 +50,21 @@ logger = logging.getLogger(__name__)
 def create_termunit(
     term, unit, targets, locations, sourcenotes, transnotes, filecounts
 ):
+    """
+    Creates a new terminology unit for a term with its translations and metadata.
+    
+    Args:
+        term: The source term to create a unit for
+        unit: Original translation unit to merge from (if any)
+        targets: Dictionary of target translations and their source files
+        locations: List of source code locations where term appears
+        sourcenotes: Developer notes from source code
+        transnotes: Translator notes
+        filecounts: Dictionary tracking term frequency in files
+    
+    Returns:
+        A new pounit containing the term and its metadata
+    """
     termunit = po.pounit(term)
     if unit is not None:
         termunit.merge(unit, overwrite=False, comments=False)
@@ -64,6 +91,17 @@ def create_termunit(
 
 
 class TerminologyExtractor:
+    """
+    Extracts terminology from translation files by analyzing source and target text.
+    
+    This class handles the core terminology extraction logic, including:
+    - Text cleaning and normalization
+    - Stopword handling
+    - Phrase extraction
+    - Term frequency tracking
+    - Case folding options
+    """
+    
     def __init__(
         self,
         foldtitle=True,
@@ -74,6 +112,18 @@ class TerminologyExtractor:
         invert=False,
         stopfile=None,
     ):
+        """
+        Initialize the terminology extractor with configuration options.
+        
+        Args:
+            foldtitle: Whether to fold case of title-case words
+            ignorecase: Whether to ignore case completely
+            accelchars: Accelerator characters to strip
+            termlength: Maximum length of terms to extract
+            sourcelanguage: Source language code
+            invert: Whether to swap source/target
+            stopfile: Path to stopwords file
+        """
         self.foldtitle = foldtitle
         self.ignorecase = ignorecase
         self.accelchars = accelchars
@@ -111,6 +161,17 @@ class TerminologyExtractor:
         self.glossary = {}
 
     def parse_stopword_file(self):
+        """
+        Parses the stopword file to build stopword lists and patterns.
+        
+        The stopword file uses special prefixes to control word handling:
+        + : Add word
+        : : Skip word
+        < : Phrase boundary
+        = : Exact word match
+        > : Skip word match
+        @ : Both word and phrase
+        """
         actions = {
             "+": frozenset(),
             ":": frozenset(["skip"]),
@@ -159,7 +220,15 @@ class TerminologyExtractor:
                 )
 
     def clean(self, string):
-        """Returns the cleaned string that contains the text to be matched."""
+        """
+        Cleans a string by removing format specifiers and markup.
+        
+        Removes:
+        - C-style format specifiers (%d, %s etc)
+        - XML/HTML tags
+        - XML/HTML entities
+        - Accelerator characters
+        """
         for accelerator in self.accelchars:
             string = string.replace(accelerator, "")
         string = self.formatpat.sub(" ", string)
@@ -198,6 +267,20 @@ class TerminologyExtractor:
                     self.glossary.setdefault(" ".join(part), []).append(translation)
 
     def processunits(self, units, fullinputpath):
+        """
+        Process translation units to extract terminology.
+        
+        For each unit:
+        1. Cleans source and target text
+        2. Splits into sentences and words
+        3. Applies stopword and case folding rules
+        4. Extracts single words and phrases
+        5. Tracks term frequencies and locations
+        
+        Args:
+            units: Iterator of translation units
+            fullinputpath: Path to source file
+        """
         sourcelang = lang_factory.getlanguage(self.sourcelanguage)
         rematchignore = frozenset(("word", "phrase"))
         defaultignore = frozenset()
@@ -278,6 +361,25 @@ class TerminologyExtractor:
         substrmin=2,
         locmin=2,
     ):
+        """
+        Creates terminology units from extracted terms.
+        
+        Filters terms based on:
+        - Minimum number of input files
+        - Minimum number of full message matches
+        - Minimum number of substring matches
+        - Minimum number of locations
+        
+        Args:
+            create_termunit: Function to create terminology units
+            inputmin: Minimum number of input files term must appear in
+            fullmsgmin: Minimum full message matches required
+            substrmin: Minimum substring matches required
+            locmin: Minimum locations required
+            
+        Returns:
+            Dictionary of terms and their metadata
+        """
         terms = {}
         locre = re.compile(r":[0-9]+$")
         logger.info("%d terms from %d units", len(self.glossary), self.units)
@@ -340,7 +442,21 @@ class TerminologyExtractor:
     sortorders_default = ["frequency", "dictionary", "length"]
 
     def filter_terms(self, terms, nonstopmin=1, sortorders=sortorders_default):
-        """Reduce subphrases from extracted terms."""
+        """
+        Filters and sorts extracted terms.
+        
+        - Removes subphrases that have same frequency as parent phrases
+        - Requires minimum number of non-stopwords
+        - Sorts terms by frequency, dictionary order, or length
+        
+        Args:
+            terms: Dictionary of terms to filter
+            nonstopmin: Minimum number of non-stopwords required
+            sortorders: List of sort criteria to apply
+            
+        Returns:
+            Sorted list of (frequency, termunit) tuples
+        """
         # reduce subphrase
         termlist = sorted(terms.keys(), key=len)
         logger.info("%d terms after thresholding", len(termlist))
@@ -379,8 +495,15 @@ class TerminologyExtractor:
 
 
 class TerminologyOptionParser(optrecurse.RecursiveOptionParser):
-    """a specialized Option Parser for the terminology tool..."""
-
+    """
+    Command-line option parser for terminology extraction tool.
+    
+    Handles:
+    - Input/output file specification
+    - Extraction options (case folding, minimum frequencies, etc)
+    - Stopword file configuration
+    - Processing of multiple input files
+    """
     def parse_args(self, args=None, values=None):
         """Parses the command line options, handling implicit input/output args."""
         (options, args) = optrecurse.optparse.OptionParser.parse_args(
@@ -527,6 +650,14 @@ def preserve_case_option(option, opt_str, value, parser):
 
 
 def main():
+    """
+    Main entry point for terminology extraction.
+    
+    1. Parses command line arguments
+    2. Processes input files
+    3. Extracts terminology
+    4. Writes terminology file
+    """
     formats = {"po": ("po", None), "pot": ("pot", None), None: ("po", None)}
     parser = TerminologyOptionParser(formats)
 

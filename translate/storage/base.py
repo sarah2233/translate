@@ -980,11 +980,7 @@ class UnitId:
         return self.__class__([*self.parts, (key, value)])
 
     @classmethod
-    def from_key(cls, text: str) -> UnitId:
-        return cls([("key", text)])
-
-    @classmethod
-    def from_string(cls, text: str) -> UnitId:
+    def from_string(cls, text):
         result = []
         # Strip possible leading separator
         text = text.removeprefix(cls.KEY_SEPARATOR)

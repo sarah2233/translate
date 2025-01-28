@@ -19,8 +19,30 @@
 """
 Convert Gettext PO localization files to flat XML files.
 
-See: http://docs.translatehouse.org/projects/translate-toolkit/en/latest/commands/flatxml2po.html
-for examples and usage instructions.
+This module handles conversion of PO (Portable Object) files back into flat XML
+format, completing the round-trip translation workflow. It can either create new
+XML files or update existing ones with translations.
+
+Key Features:
+1. Converts PO translations to XML key-value pairs
+2. Optional template-based XML generation
+3. Configurable XML structure and formatting
+4. XML namespace support
+5. Customizable indentation
+6. Preserves untranslated strings
+7. Updates existing XML files
+
+XML Output Example:
+    <root>
+        <str key="greeting">Bonjour le monde</str>
+        <str key="farewell">Au revoir</str>
+    </root>
+
+Usage:
+    po2flatxml input.po output.xml --root=root --value=str --key=key
+
+For detailed usage instructions and examples, see:
+http://docs.translatehouse.org/projects/translate-toolkit/en/latest/commands/flatxml2po.html
 """
 
 from translate.convert import convert
@@ -29,9 +51,22 @@ from translate.storage import flatxml, po
 
 class po2flatxml:
     """
-    Convert to a single PO file to a single XML file, optionally
-    applying modifications to a template file instead of creating
-    one from scratch based on input parameters.
+    Converter for transforming PO files back to flat XML format.
+    
+    This class handles the conversion of translated PO files into XML files
+    with a simple key-value structure. It can either create new XML files
+    or update existing ones with translations.
+    
+    Features:
+    - Template-based conversion
+    - Configurable XML structure
+    - Customizable indentation
+    - Namespace support
+    - Fallback to source for untranslated strings
+    
+    Attributes:
+        TargetStoreClass: Class to handle XML output (FlatXMLFile)
+        TargetUnitClass: Class for individual XML units (FlatXMLUnit)
     """
 
     TargetStoreClass = flatxml.FlatXMLFile
@@ -48,7 +83,19 @@ class po2flatxml:
         ns=None,
         indent=2,
     ):
-        """Initialize the converter."""
+        """
+        Initialize the PO to XML converter.
+        
+        Args:
+            inputfile: Source PO file with translations
+            outputfile: Target XML file to create
+            templatefile: Optional template XML file to update
+            root: Name of root XML element
+            value: Name of elements containing strings
+            key: Name of attribute containing string identifier
+            ns: XML namespace URI
+            indent: Number of spaces for indentation (0 for none)
+        """
         self.inputfile = inputfile
         self.outputfile = outputfile
         self.templatefile = templatefile
@@ -72,7 +119,20 @@ class po2flatxml:
         )
 
     def convert_unit(self, unit):
-        """Convert a source format unit to a target format unit."""
+        """
+        Convert a single PO unit to XML format.
+        
+        Creates a new XML unit with:
+        - Source text as the key
+        - Translated text as the value
+        - Falls back to source text if no translation
+        
+        Args:
+            unit: Source PO unit with translation
+            
+        Returns:
+            XML unit containing the translated string
+        """
         target_unit = self.TargetUnitClass(
             source=None,
             namespace=self.namespace,
@@ -87,7 +147,16 @@ class po2flatxml:
         return target_unit
 
     def convert_store(self):
-        """Convert a single source file to a target format file."""
+        """
+        Convert the entire PO file to XML format.
+        
+        Process:
+        1. Iterate through all PO units
+        2. Skip empty source strings
+        3. Update existing XML units if found
+        4. Create new XML units if needed
+        5. Apply translations or fall back to source
+        """
         for unit in self.source_store.units:
             key = unit.source
             if not key:
@@ -100,7 +169,18 @@ class po2flatxml:
                 target_unit.target = unit.target
 
     def run(self):
-        """Run the converter."""
+        """
+        Execute the conversion process.
+        
+        Process:
+        1. Convert the PO store to XML
+        2. Check if result is empty
+        3. Serialize output if not empty
+        
+        Returns:
+            1 if conversion successful and not empty
+            0 if resulting XML file would be empty
+        """
         self.convert_store()
 
         if self.target_store.isempty():
@@ -120,12 +200,30 @@ def run_converter(
     ns=None,
     indent=2,
 ):
-    """Wrapper around the converter."""
+    """
+    Convenience function to run the converter.
+    
+    Creates a converter instance and runs it with the given parameters.
+    
+    Args:
+        inputfile: Source PO file
+        outputfile: Target XML file
+        templatefile: Template XML file (optional)
+        root: Root element name
+        value: Value element name
+        key: Key attribute name
+        ns: XML namespace
+        indent: Indentation spaces
+        
+    Returns:
+        Result of conversion (0 or 1)
+    """
     return po2flatxml(
         inputfile, outputfile, templatefile, root, value, key, ns, indent
     ).run()
 
 
+# Supported format pairs for conversion
 formats = {
     ("po"): ("xml", run_converter),
     ("po", "xml"): ("xml", run_converter),
@@ -133,6 +231,22 @@ formats = {
 
 
 def main(argv=None):
+    """
+    Command-line interface for the converter.
+    
+    Provides options to customize:
+    - Root element name (-r, --root)
+    - Value element name (-v, --value)
+    - Key attribute name (-k, --key)
+    - XML namespace (-n, --namespace)
+    - Indentation width (-w, --indent)
+    
+    Supports template-based conversion for updating
+    existing XML files with translations.
+    
+    Example:
+        po2flatxml -r root -v string -k id input.po output.xml
+    """
     parser = convert.ConvertOptionParser(
         formats, usetemplates=True, description=__doc__
     )
